@@ -25,6 +25,7 @@ public class KnnIteration extends ParallelIteration {
 	private RowsDescriptor rowFormat;
 	private KnnRow[] inMemoryRows;
 	private DistanceFunction dFunction;
+	boolean isFoldNotApplicable;
 	int k;
 	KnnPredictor predictor;
 	//List<Tuple2<Integer, KnnRow>> nnList;
@@ -38,7 +39,7 @@ public class KnnIteration extends ParallelIteration {
 				break;
 
 			testRow = new KnnRow(lines[j], rowFormat, k, predictor);
-			Utility.setKnn(k, testRow, inMemoryRows);
+			Utility.setKnn(k, testRow, inMemoryRows,dFunction, isFoldNotApplicable);
 			nnList.add(new Tuple2<Integer, KnnRow>(testRow.getId(),testRow));
 		}
 		return nnList;
@@ -53,13 +54,14 @@ public class KnnIteration extends ParallelIteration {
 		inMemoryRows = (KnnRow[]) param.get("inMemoryRows");
 		k = (int)param.get("k");
 		predictor = (KnnPredictor) param.get("predictor");
+		isFoldNotApplicable = (boolean) param.get("isFoldNotApplicable");
 		//InMemoryRows inMemRows = (InMemoryRows) param.get("inMemoryRows");
 		//inMemoryRows = inMemRows.getInMemRows();
 	}
 	
 	public Object generateParameters(String[] lines,
-			RowsDescriptor rowFormat,KnnRow[] inMemoryRows,
-			DistanceFunction dFunction, KnnPredictor predictor, int k) {
+			RowsDescriptor rowFormat,Object inMemoryRows,
+			DistanceFunction dFunction, KnnPredictor predictor, int k, boolean isFoldNotApplicable) {
 		
 		Map param = new HashMap();
 		param.put("lines", lines);
@@ -68,6 +70,7 @@ public class KnnIteration extends ParallelIteration {
 		param.put("dFunction", dFunction);
 		param.put("k", k);
 		param.put("predictor", predictor);
+		param.put("isFoldNotApplicable", isFoldNotApplicable);
 		
 		setParameters(param);
 		return param;

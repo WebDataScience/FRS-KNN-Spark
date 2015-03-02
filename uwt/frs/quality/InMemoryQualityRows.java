@@ -11,6 +11,7 @@ public class InMemoryQualityRows implements Serializable {
 	double[] numericAttrs;
 	//double[][] attributes;
 	int rowCount = 0;
+	double[] responseVarValues;
 	
 	public InMemoryQualityRows(List<QualityRow> rows) {
 		int numOfRows = rows.size();
@@ -18,6 +19,7 @@ public class InMemoryQualityRows implements Serializable {
 		inMemRows = new QualityRow[numOfRows];
 
 		numericAttrs = new double[numOfRows * row.getNumOfAttributes()];
+		responseVarValues = new double[numOfRows];
 		for(QualityRow r:rows)
 		{
 			addRow(r);
@@ -44,6 +46,7 @@ public class InMemoryQualityRows implements Serializable {
 		{
 			numericAttrs[i+rowCount*attrs.length] = attrs[i];
 		}
+		responseVarValues[rowCount] = row.getNormalizedOutcome();
 		rowCount++;
 	}
 	
@@ -63,4 +66,9 @@ public class InMemoryQualityRows implements Serializable {
 	public double[] getNumericAttrs() {
 		return numericAttrs;
 	}
+
+	public double[] getResponseVarValues() {
+		return responseVarValues;
+	}
+
 }

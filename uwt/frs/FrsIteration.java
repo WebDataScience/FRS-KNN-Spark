@@ -41,7 +41,14 @@ public class FrsIteration extends ParallelIteration {
 				result = computeBothApprox();
 		}
 		else
-			result = computeLowerApproxOnly();
+		{
+			if(numericOnly)
+				result = computeLowerApproxNumeric();
+			else
+				result = computeLowerApproxOnly();
+			
+		}
+			
 		
 		return result;//new FuzzyMergeable();
 	}
@@ -255,6 +262,59 @@ public class FrsIteration extends ParallelIteration {
 				
 			}
 			result.add(new Tuple2<Integer, ApproxRow>(row.getId(), new ApproxRow(la, ua)));
+		}
+
+		return result;
+	}
+	
+	public Mergeable computeLowerApproxNumeric()
+	{
+		ApproxRow row;
+		double implicator= 0;
+		double tnorm = 0;
+		double simVal = -1;
+		double[] rowAttrs;
+		//double[] la = lowerApproxValues;
+		//double[] ua = upperApproxValues;
+		double[] cv = classVectors;
+		int r1=0, attrStartInd=0;
+		double[] la;
+		double[] inMemRowAttrs = inMemRows.getNumericAttrs();
+		//double[][] attributes = inMemRows.getAttributes();
+		ListMerger result = new ListMerger();
+		int aj = 0;
+		int c = 0;
+
+		for(int j=start; j<end; j++)
+		{
+			if(lines[j] == null)
+				break;
+			row = new ApproxRow(lines[j], rowFormat, cvGen, rangesVal,bothApproxIncluded);
+			rowAttrs = row.getNumericAttributes();
+			la = new double[numOfClasses];
+			Arrays.fill(la, 1);
+			aj = 0;
+			c = 0;
+			
+			for(int ri = 0; ri< partitionSize; ri++)
+			{
+				simVal = 0;
+				//attrs = (double[][]) attributes[ri];
+				for(int ai=0;ai<rowAttrs.length; ai++, aj++)
+				{
+					simVal += Math.abs(inMemRowAttrs[aj] - rowAttrs[ai]);
+					//simVal += Math.abs(attributes[ri][ai] - rowAttrs[ai]);
+				}
+				simVal =  (rowAttrs.length - simVal)/rowAttrs.length;
+
+				for(int i=0; i<numOfClasses;i++,c++)
+				{
+					implicator = Math.max((1-simVal), cv[c]);
+					la[i] = Math.min(implicator, la[i]);
+				}
+				
+			}
+			result.add(new Tuple2<Integer, double[]>(row.getId(), la));
 		}
 
 		return result;

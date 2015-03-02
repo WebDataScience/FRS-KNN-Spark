@@ -146,12 +146,12 @@ public class FuzzyNnClassifier {
 			}
 		}).coalesce(1, false).saveAsTextFile(outputFilePath);*/
 		String qualityPath;
-		if(command.equals("q"))
+		/*if(command.equals("q"))
 		{
 			qualityPath = Utility.computeQualityVector(sc, trainingSetPath, numOfPartitions, hadoopHome, numOfThreads, outputPath, rowFormat, simFunction, false);
 			System.out.println(qualityPath);
 		}
-		else if(command.equals("p"))
+		else */if(command.equals("p"))
 		{
 			String predPath = Utility.predict(sc, trainingSetPath, testDataPath, outputPath, numberOfNN, numOfPartitions, hadoopHome, numOfThreads,predictor, rowFormat,dfunction);
 			stopTime = System.currentTimeMillis()/1000;
@@ -182,10 +182,13 @@ public class FuzzyNnClassifier {
 		else
 		{
 			MyLogger logger = new MyLogger("/home/hasfoor/frs.log");
+			boolean numericOnly = false;
+			if(command.contains("n"))
+				numericOnly = true;
 			if(command.contains("l"))
 			{
 				try {
-					lowerApproxPath = Utility.computeLowerApprox(sc, trainingSetPath, numOfPartitions, hadoopHome, numOfThreads, outputPath, cvGen, rowFormat, simFunction, false);
+					lowerApproxPath = Utility.computeLowerApprox(sc, trainingSetPath, numOfPartitions, hadoopHome, numOfThreads, outputPath, cvGen, rowFormat, simFunction, numericOnly);
 					//lowerApproxPath = Utility.computeQualityVector(sc, trainingSetPath, numOfPartitions, hadoopHome, numOfThreads, outputPath, rowFormat, simFunction, false);
 					
 				
@@ -206,7 +209,7 @@ public class FuzzyNnClassifier {
 			{
 				try {
 					//lowerApproxPath = Utility.computeLowerApprox(sc, trainingSetPath, numOfPartitions, hadoopHome, numOfThreads, outputPath, cvGen, rowFormat, simFunction, false);
-					lowerApproxPath = Utility.computeQualityVector(sc, trainingSetPath, numOfPartitions, hadoopHome, numOfThreads, outputPath, rowFormat, simFunction, false);
+					lowerApproxPath = Utility.computeQualityVector(sc, trainingSetPath, numOfPartitions, hadoopHome, numOfThreads, outputPath, rowFormat, simFunction, numericOnly);
 					
 				
 				} catch (IOException e) {
@@ -218,21 +221,26 @@ public class FuzzyNnClassifier {
 				}
 				stopTime = System.currentTimeMillis()/1000;
 				outputMsg += "Done Computing Lower Approximation - Time elapsed: " + (stopTime - startTime) + " seconds\n";
+				System.out.println("Done Computing Lower Approximation - Time elapsed: " + (stopTime - startTime) + " seconds\n");
 				outputMsg += lowerApproxPath+"\n";
 				logger.log(outputMsg);
 				logger.close();
+				
 			}
+			
 			
 			
 		
 			if(command.contains("r"))
 			{
-				outputMsg += computeBestRMSE(sc, trainingSetPath, numOfPartitions, lowerApproxPath, outputPath, numberOfNN, hadoopHome, numOfThreads,predictor, rowFormat, dfunction);
+				outputMsg = computeBestRMSE(sc, trainingSetPath, numOfPartitions, lowerApproxPath, outputPath, numberOfNN, hadoopHome, numOfThreads,predictor, rowFormat, dfunction);
 	
 			}
 		}
 		sc.stop();
 		System.out.println(outputMsg);
+		stopTime = System.currentTimeMillis()/1000;
+		//System.out.println("Final Time elapsed: " + (stopTime - startTime) + " seconds");
 	}
 	
 	public static String computeBestRMSE2(JavaSparkContext sc, String trainingSetPath, int numOfPartitions, String lowerApproxPath, String outputPath, final int numberOfNN, String hadoopHome, int numOfThreads, final KnnPredictor predictor, final RowsDescriptor rowFormat, DistanceFunction dfunction) throws IOException
@@ -386,7 +394,7 @@ public class FuzzyNnClassifier {
 
 		double quality = maxQuality;
 		double qualityDecrement = (maxQuality-minQuality)/10;
-		quality -=qualityDecrement;
+		//quality -=qualityDecrement;
 		double rmse = Double.MAX_VALUE;
 		double newRMSE = Double.MAX_VALUE;
 		
@@ -400,12 +408,16 @@ public class FuzzyNnClassifier {
 		String protoOut="";
 		MyLogger logger = new MyLogger("/home/hasfoor/frsknn.log");
 		trainingSetRDD = trainingSetRDD.cache();
+		long prototypeSetSize = 0;
+		String newOutput = "quality,rmse,size,time\n";
+
 		while(quality>=minQuality)
 		{
 			startTime = System.currentTimeMillis()/1000;
 			//trainingSetPath = getPrototypeSetByQuality(datasetWithQuality, quality, outputPath);
 
 			prototypeSetRDD = Utility.applyInstanceSelection(trainingSetRDD, quality);
+			prototypeSetSize = prototypeSetRDD.count();
 			/*protoOut+="\nQ="+quality+"\n";
 			protoOut+="\ncount="+prototypeSetRDD.count()+"\n";
 			/*for(KnnRow r:prototypeSetRDD.collect())
@@ -418,6 +430,7 @@ public class FuzzyNnClassifier {
 			outputMsg+= "Done Computing RMSE = "+newRMSE+" for quality= "+df.format(quality)+" - Time elapsed: " + (stopTime - startTime) + " seconds\n";
 			logger.log("Done Computing RMSE = "+newRMSE+" for quality= "+df.format(quality)+" - Time elapsed: " + (stopTime - startTime) + " seconds\n");
 			rmse = newRMSE;
+			newOutput += df.format(quality)+","+newRMSE+","+prototypeSetSize+","+(stopTime - startTime)+"\n";
 			if(rmse<lowestRMSE)
 			{
 				lowestRMSE = rmse;
@@ -426,7 +439,7 @@ public class FuzzyNnClassifier {
 			quality -=qualityDecrement;
 		}
 		logger.close();
-		System.out.println(protoOut);
+		//System.out.println(protoOut);
 		final double finalQuality = bestQuality;
 		SimpleDateFormat formatter = new SimpleDateFormat("YYYY-MM-dd_hh-mm-ss");
 		df = new DecimalFormat("#.###");
@@ -441,7 +454,8 @@ public class FuzzyNnClassifier {
 			}
 		}).coalesce(1,true).saveAsTextFile(outputFilePath);
 		outputMsg+=outputFilePath+"\n";
-		return outputMsg;
+		outputMsg+="Best Quality Threshold ="+ finalQuality+"\n";
+		return newOutput;
 	}
 	
 	

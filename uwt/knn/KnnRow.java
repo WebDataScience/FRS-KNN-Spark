@@ -85,6 +85,10 @@ public class KnnRow extends Row{
 		this.knnList = MinMaxPriorityQueue.maximumSize(k).create();
 		this.knnList.addAll(knnList);
 	}
+	
+	public void setKnnList(MinMaxPriorityQueue<NearestNeighbor> knnList) {
+		this.knnList = knnList;
+	}
 
 	public int getK() {
 		return k;

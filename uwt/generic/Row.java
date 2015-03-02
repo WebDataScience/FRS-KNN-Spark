@@ -16,7 +16,7 @@ public class Row implements Serializable{
 	protected String label;
 	protected String line;
 	
-	double responseVariable;
+	double outcome;
 	
 	public Row()
 	{
@@ -38,14 +38,15 @@ public class Row implements Serializable{
 		
 		for(int i=0;i<numIndices.size();i++)
 		{
-			//try
-			//{
+			try
+			{
 			numericAttributes[i] = Double.parseDouble(attrs[numIndices.get(i)]);
-			/*}
+			}
 			catch(Exception ex)
 			{
+				System.out.println(ex);
 				ex.toString();
-			}*/
+			}
 		}
 		
 		for(int i=0;i<strIndices.size();i++)
@@ -59,7 +60,7 @@ public class Row implements Serializable{
 		}
 
 		label = attrs[attrs.length-1];
-		responseVariable = Double.parseDouble(label);
+		outcome = Double.parseDouble(label);
 		id = Integer.parseInt(attrs[0]);
 	}
 	
@@ -127,12 +128,12 @@ public class Row implements Serializable{
 		this.line = line;
 	}
 
-	public double getResponseVariable() {
-		return responseVariable;
+	public double getOutcome() {
+		return outcome;
 	}
 
-	public void setResponseVariable(double responseVariable) {
-		this.responseVariable = responseVariable;
+	public void setOutcome(double outcome) {
+		this.outcome = outcome;
 	}
 	
 	
