@@ -6,6 +6,11 @@ import java.util.List;
 import uwt.knn.KnnRow;
 import uwt.knn.NearestNeighbor;
 
+/**
+ * This class predicts the cost of an instance given the costs of its neighbors.
+ * @author Hasan
+ *
+ */
 public class KnnCostPredictor implements KnnPredictor {
 
 	@Override

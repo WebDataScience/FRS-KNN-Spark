@@ -28,7 +28,7 @@ public class KnnIteration extends ParallelIteration {
 	boolean isFoldNotApplicable;
 	int k;
 	KnnPredictor predictor;
-	//List<Tuple2<Integer, KnnRow>> nnList;
+
 	@Override
 	public Mergeable runIteration() {
 		KnnRow testRow;
@@ -55,8 +55,6 @@ public class KnnIteration extends ParallelIteration {
 		k = (int)param.get("k");
 		predictor = (KnnPredictor) param.get("predictor");
 		isFoldNotApplicable = (boolean) param.get("isFoldNotApplicable");
-		//InMemoryRows inMemRows = (InMemoryRows) param.get("inMemoryRows");
-		//inMemoryRows = inMemRows.getInMemRows();
 	}
 	
 	public Object generateParameters(String[] lines,

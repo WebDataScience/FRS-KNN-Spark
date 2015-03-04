@@ -41,8 +41,6 @@ public class KnnOneRowIteration extends ParallelIteration {
 		inMemoryRows = (KnnRow[]) param.get("inMemoryRows");
 		k = (int)param.get("k");
 		testRow = (KnnRow) param.get("testRow");
-		//InMemoryRows inMemRows = (InMemoryRows) param.get("inMemoryRows");
-		//inMemoryRows = inMemRows.getInMemRows();
 	}
 	
 	public Object generateParameters(KnnRow testRow, KnnRow[] inMemoryRows, int k) {

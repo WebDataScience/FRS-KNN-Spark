@@ -3,6 +3,12 @@ package uwt.frs;
 import java.util.Arrays;
 import java.util.List;
 
+/**
+ * This class converts attributes of instances from being encapsulated by objects to being stored inside an array.
+ * Useful when applying the numeric attributes optimization.
+ * @author Hasan
+ *
+ */
 public class InMemoryRows {
 	ApproxRow[] inMemRows;
 	double[] numericAttrs;

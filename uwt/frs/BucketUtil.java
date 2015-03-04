@@ -7,6 +7,11 @@ import org.apache.spark.api.java.function.VoidFunction;
 
 import uwt.generic.Row;
 
+/**
+ * A class that is used to generate high mid and low class values. 
+ * @author Hasan
+ *
+ */
 public class BucketUtil implements ClassVectorsGenerator {
 	double a,b,c;
 	
@@ -54,6 +59,10 @@ public class BucketUtil implements ClassVectorsGenerator {
 	}
 
 
+	/* (non-Javadoc)
+	 * Compute min and max from an RDD while initializing
+	 * @see uwt.frs.ClassVectorsGenerator#init(org.apache.spark.api.java.JavaRDD)
+	 */
 	@Override
 	public void init(JavaRDD<Row> rowsRdd) {
 		SparkContext sc = rowsRdd.context();

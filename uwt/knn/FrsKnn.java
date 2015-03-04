@@ -69,10 +69,9 @@ import uwt.knn.predictors.KnnCostPredictor;
 import uwt.knn.predictors.KnnPredictor;
 import uwt.knn.predictors.PredictedValue;
 
-public class FuzzyNnClassifier {
-
+public class FrsKnn {
+    	public static String logPath = System.getProperty("user.dir");
 	public static void main(String[] args) throws IOException, InterruptedException {
-		
 		String paramsPath = args[0];
 		Properties properties = null;
 		properties = Utility.readParameters(paramsPath);
@@ -84,9 +83,15 @@ public class FuzzyNnClassifier {
 		String outputPath = properties.getProperty("output_path");
 		final String hadoopHome = properties.getProperty("hadoop_home");
 		int numOfPartitions = Integer.parseInt(properties.getProperty("partitions"));
-		//final int numOfCols = Integer.parseInt(properties.getProperty("columns"));
 		final int numOfThreads = Integer.parseInt(properties.getProperty("threads"));
 		final RowsDescriptor rowFormat = new RowsDescriptor(properties.getProperty("attr_types"));
+		String trainingSetPath = properties.getProperty("training_set");
+		String testDataPath = properties.getProperty("test_data");
+		final int numberOfNN = Integer.parseInt(properties.getProperty("knn"));
+		String lowerApproxPath = properties.getProperty("lowerapprox");
+		if(properties.getProperty("log_path")!=null)
+		logPath = properties.getProperty("log_path");
+		
 		/*
 		 * Preparing the Spark environment
 		 */
@@ -99,14 +104,12 @@ public class FuzzyNnClassifier {
 		// conf.set("spark.locality.wait", "0");
 		// conf.set("spark.deploy.spreadOut", "true");
 		conf.setJars(new String[] { jarFilePath });
+		if(!sparkServer.equals("local"))
 		conf.setSparkHome(sparkHome);
 		JavaSparkContext sc = new JavaSparkContext(conf);
 		
 		
-		String trainingSetPath = properties.getProperty("training_set");
-		String testDataPath = properties.getProperty("test_data");
-		final int numberOfNN = Integer.parseInt(properties.getProperty("knn"));
-		String lowerApproxPath = properties.getProperty("lowerapprox");
+		
 		
 		long startTime = System.currentTimeMillis()/1000;
 		long stopTime = 0;
@@ -115,50 +118,20 @@ public class FuzzyNnClassifier {
 		ClassVectorsGenerator cvGen = new BucketUtil();
 		FuzzySimilarityFunction simFunction = new MultiTypesSimilarity();
 		DistanceFunction dfunction = new MultiTypesDistance();
-		/*ClassVectorsGenerator cvGen = new ClassVectorsGenerator() {
-			
-			@Override
-			public void init(JavaRDD<Row> rowsRdd) {
-				// TODO Auto-generated method stub
-				
-			}
-			
-			@Override
-			public double[] generateClassVectors(String label) {
-				double[] cValue = new double[1];
-				cValue[0] = Double.parseDouble(label);
-				return cValue;
-			}
-		};*/
+
 		
 		final KnnCostPredictor predictor = new KnnCostPredictor();
 		
-		/*JavaPairRDD<Integer, KnnRow> knnRDD = getKnnRDD(trainingSetPath, sc, numberOfNN, numOfPartitions, hadoopHome, numOfThreads,predictor, rowFormat, dfunction);
-		SimpleDateFormat formatter = new SimpleDateFormat("YYYY-MM-dd_hh-mm-ss");
-		DecimalFormat df = new DecimalFormat("#.###");
-		String outputFilePath = outputPath+"/knn_"+formatter.format(new Date());
-		knnRDD.map(new Function<Tuple2<Integer,KnnRow>, String>() {
 
-			@Override
-			public String call(Tuple2<Integer, KnnRow> arg0) throws Exception {
-				// TODO Auto-generated method stub
-				return arg0._2.getId() + ": " + arg0._2.getKnnString();
-			}
-		}).coalesce(1, false).saveAsTextFile(outputFilePath);*/
-		String qualityPath;
-		/*if(command.equals("q"))
-		{
-			qualityPath = Utility.computeQualityVector(sc, trainingSetPath, numOfPartitions, hadoopHome, numOfThreads, outputPath, rowFormat, simFunction, false);
-			System.out.println(qualityPath);
-		}
-		else */if(command.equals("p"))
+		//p means apply kNN to predict the outcome of instances in a test set
+		if(command.equals("p"))
 		{
 			String predPath = Utility.predict(sc, trainingSetPath, testDataPath, outputPath, numberOfNN, numOfPartitions, hadoopHome, numOfThreads,predictor, rowFormat,dfunction);
 			stopTime = System.currentTimeMillis()/1000;
 			outputMsg += "Done Predicting - Time elapsed: " + (stopTime - startTime) + " seconds\n";
 			outputMsg+=predPath;
 		}
-		else if(command.equals("rmse"))
+		else if(command.equals("rmse")) //rmse means compute RMSE for kNN using 10-fold CV
 		{
 			JavaRDD<String> rawRDD = sc.textFile(trainingSetPath, numOfPartitions);
 			long rowCount = rawRDD.count();
@@ -172,8 +145,7 @@ public class FuzzyNnClassifier {
 			});
 			
 			startTime = System.currentTimeMillis()/1000;
-			//trainingSetPath = getPrototypeSetByQuality(datasetWithQuality, quality, outputPath);
-			
+
 			double newRMSE = Utility.knnTenFold(trainingSetRDD, trainingSetPath, numberOfNN, numOfPartitions, hadoopHome, numOfThreads, predictor, rowFormat, dfunction,rowCount);
 			stopTime = System.currentTimeMillis()/1000;
 			System.out.println("RMSE= "+newRMSE+ " Time elapsed: " + (stopTime - startTime) + " seconds\n");
@@ -181,16 +153,14 @@ public class FuzzyNnClassifier {
 		}
 		else
 		{
-			MyLogger logger = new MyLogger("/home/hasfoor/frs.log");
+			MyLogger logger = new MyLogger(FrsKnn.logPath);
 			boolean numericOnly = false;
-			if(command.contains("n"))
+			if(command.contains("n")) //apply numeric optimization
 				numericOnly = true;
-			if(command.contains("l"))
+			if(command.contains("l")) //compute HML quality vector
 			{
 				try {
-					lowerApproxPath = Utility.computeLowerApprox(sc, trainingSetPath, numOfPartitions, hadoopHome, numOfThreads, outputPath, cvGen, rowFormat, simFunction, numericOnly);
-					//lowerApproxPath = Utility.computeQualityVector(sc, trainingSetPath, numOfPartitions, hadoopHome, numOfThreads, outputPath, rowFormat, simFunction, false);
-					
+					lowerApproxPath = Utility.computeHML(sc, trainingSetPath, numOfPartitions, hadoopHome, numOfThreads, outputPath, cvGen, rowFormat, simFunction, numericOnly);
 				
 				} catch (IOException e) {
 					// TODO Auto-generated catch block
@@ -205,11 +175,10 @@ public class FuzzyNnClassifier {
 				logger.log(outputMsg);
 				logger.close();
 			}
-			else if(command.contains("q"))
+			else if(command.contains("q")) //compute POWA quality vector
 			{
 				try {
-					//lowerApproxPath = Utility.computeLowerApprox(sc, trainingSetPath, numOfPartitions, hadoopHome, numOfThreads, outputPath, cvGen, rowFormat, simFunction, false);
-					lowerApproxPath = Utility.computeQualityVector(sc, trainingSetPath, numOfPartitions, hadoopHome, numOfThreads, outputPath, rowFormat, simFunction, numericOnly);
+					lowerApproxPath = Utility.computePOWA(sc, trainingSetPath, numOfPartitions, hadoopHome, numOfThreads, outputPath, rowFormat, simFunction, numericOnly);
 					
 				
 				} catch (IOException e) {
@@ -231,7 +200,7 @@ public class FuzzyNnClassifier {
 			
 			
 		
-			if(command.contains("r"))
+			if(command.contains("r")) //compute the best quality threshold
 			{
 				outputMsg = computeBestRMSE(sc, trainingSetPath, numOfPartitions, lowerApproxPath, outputPath, numberOfNN, hadoopHome, numOfThreads,predictor, rowFormat, dfunction);
 	
@@ -243,90 +212,14 @@ public class FuzzyNnClassifier {
 		//System.out.println("Final Time elapsed: " + (stopTime - startTime) + " seconds");
 	}
 	
-	public static String computeBestRMSE2(JavaSparkContext sc, String trainingSetPath, int numOfPartitions, String lowerApproxPath, String outputPath, final int numberOfNN, String hadoopHome, int numOfThreads, final KnnPredictor predictor, final RowsDescriptor rowFormat, DistanceFunction dfunction) throws IOException
-	{
-		JavaRDD<String> rawRDD = sc.textFile(trainingSetPath, numOfPartitions);
-		JavaPairRDD<Integer, KnnRow> datasetRDD = rawRDD.mapToPair(new PairFunction<String, Integer, KnnRow>() {
-
-			@Override
-			public Tuple2<Integer, KnnRow> call(String line) throws Exception {
-				KnnRow knnRow = new KnnRow(line, rowFormat, numberOfNN,predictor);
-				return new Tuple2<Integer, KnnRow>(knnRow.getId(), knnRow);
-			}
-		});
-				
-
-		JavaPairRDD<Integer, Double> lowerApproxRDD = sc.textFile(lowerApproxPath, numOfPartitions).mapToPair(new PairFunction<String, Integer, Double>() {
-
-			@Override
-			public Tuple2<Integer, Double> call(String arg0) throws Exception {
-				String[] parts = arg0.split(",");
-				return new Tuple2<Integer, Double>(Integer.parseInt(parts[0]), Double.parseDouble(parts[1]));
-			}
-		});
-		
-		JavaPairRDD<Integer, Tuple2<KnnRow, Double>> datasetWithQuality = datasetRDD.join(lowerApproxRDD).cache();
-		
-		double[] maxQualityVal = new double[1];
-		final Accumulator<double[]> maxQualityAc = sc.accumulator(maxQualityVal, new MaxAccumulator());
-		datasetWithQuality.foreach(new VoidFunction<Tuple2<Integer,Tuple2<KnnRow,Double>>>() {
-			
-			@Override
-			public void call(Tuple2<Integer, Tuple2<KnnRow, Double>> arg0)
-					throws Exception {
-				double[] q = new double[1];
-				q[0] = arg0._2()._2();
-				maxQualityAc.add(q);
-				
-			}
-		});
-		
-		double maxQuality = maxQualityAc.value()[0];
-
-		double quality = maxQuality;
-		double qualityDecrement = maxQuality/10;
-		quality -=qualityDecrement;
-		double rmse = Double.MAX_VALUE;
-		double newRMSE = Double.MAX_VALUE;
-		
-		DecimalFormat df = new DecimalFormat("#.###");
-		long startTime, stopTime;
-		String outputMsg = null;
-		String protoOut = "";
-		String protoTypePath = "";
-		while(quality>0)
-		{
-			startTime = System.currentTimeMillis()/1000;
-			protoTypePath = getPrototypeSetByQuality(datasetWithQuality, quality, outputPath);
-			JavaRDD<KnnRow> prototypeSetRDD = sc.textFile(protoTypePath).map(new Function<String, KnnRow>() {
-
-				@Override
-				public KnnRow call(String arg0) throws Exception {
-					// TODO Auto-generated method stub
-					return new KnnRow(arg0, rowFormat, numberOfNN, predictor);
-				}
-			});
-			
-			/*protoOut+="\nQ="+quality+"\n";
-			for(KnnRow r:prototypeSetRDD.collect())
-			{
-				protoOut += r.checkRow()+"\n";
-			}*/
-
-			newRMSE = Utility.knnTenFold(prototypeSetRDD, trainingSetPath, numberOfNN, numOfPartitions, hadoopHome, numOfThreads, predictor, rowFormat, dfunction,1);
-			stopTime = System.currentTimeMillis()/1000;
-			outputMsg+= "Done Computing RMSE = "+newRMSE+" for quality= "+df.format(quality)+" - Time elapsed: " + (stopTime - startTime) + " seconds\n";
-			//outputMsg+=trainingSetPath+"\n";
-			/*if(newRMSE>rmse)
-				break;
-			else*/
-				rmse = newRMSE;
-			quality -=qualityDecrement;
-		}
-		System.out.println(protoOut);
-		return outputMsg;
-	}
-
+	    /**
+	     * This method computes the highest quality value that produce the least RMSE. It basically run kNN 10-fold on the data set ten times and in each 
+	     * time it filters out some rows based on their qualities.
+	     * @param rows The rows of the data set having their qualities computed
+	     * @param k number of NN
+	     * @return output message
+	     * @throws IOException
+	     */
 	public static String computeBestRMSE(JavaSparkContext sc, String trainingSetPath, int numOfPartitions, String lowerApproxPath, String outputPath, final int numberOfNN, String hadoopHome, int numOfThreads, final KnnPredictor predictor, final RowsDescriptor rowFormat, DistanceFunction dfunction) throws IOException
 	{
 		
@@ -414,16 +307,10 @@ public class FuzzyNnClassifier {
 		while(quality>=minQuality)
 		{
 			startTime = System.currentTimeMillis()/1000;
-			//trainingSetPath = getPrototypeSetByQuality(datasetWithQuality, quality, outputPath);
 
 			prototypeSetRDD = Utility.applyInstanceSelection(trainingSetRDD, quality);
 			prototypeSetSize = prototypeSetRDD.count();
-			/*protoOut+="\nQ="+quality+"\n";
-			protoOut+="\ncount="+prototypeSetRDD.count()+"\n";
-			/*for(KnnRow r:prototypeSetRDD.collect())
-			{
-				protoOut += r.checkRow()+"\n";
-			}*/
+
 			
 			newRMSE = Utility.knnTenFold(prototypeSetRDD, trainingSetPath, numberOfNN, numOfPartitions, hadoopHome, numOfThreads, predictor, rowFormat, dfunction, rowCount);
 			stopTime = System.currentTimeMillis()/1000;

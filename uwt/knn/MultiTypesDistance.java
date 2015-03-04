@@ -3,6 +3,11 @@ package uwt.knn;
 import uwt.generic.Row;
 import uwt.generic.Utility;
 
+/**
+ * A class that is used to compute the distance between two attributes. The attributes can numeric, string or boolean.
+ * @author Hasan
+ *
+ */
 public class MultiTypesDistance implements DistanceFunction{
 
 	/**

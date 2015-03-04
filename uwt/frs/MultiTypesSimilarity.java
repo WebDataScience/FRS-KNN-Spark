@@ -3,6 +3,11 @@ package uwt.frs;
 import uwt.generic.Row;
 import uwt.generic.Utility;
 
+/**
+ * A class that is used to compute the similarity between two attributes. The attributes can numeric, string or boolean.
+ * @author Hasan
+ *
+ */
 public class MultiTypesSimilarity implements FuzzySimilarityFunction {
 
 	@Override

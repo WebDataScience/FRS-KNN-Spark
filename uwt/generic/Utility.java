@@ -60,6 +60,7 @@ import uwt.frs.quality.InMemoryQualityRows;
 import uwt.frs.quality.QualityIteration;
 import uwt.frs.quality.QualityRow;
 import uwt.knn.DistanceFunction;
+import uwt.knn.FrsKnn;
 import uwt.knn.InMemoryKnnRows;
 import uwt.knn.KnnIteration;
 import uwt.knn.KnnMergableList;
@@ -216,48 +217,7 @@ public class Utility implements Serializable {
 		return rangesVals;
 	}
 	
-	public static double[] getRangesPlus(JavaRDD<Row> rdd)
-	{
-		SparkContext sc = rdd.context();
-		Row firstRow = rdd.first();
-		int numOfNumericCols = firstRow.getNumericAttributes().length + 1;
-		
-		double[] minVals = new double[numOfNumericCols];
-		double[] maxVals = new double[numOfNumericCols];
-
-		
-		double[] rangesVals = new double[numOfNumericCols];
-		//Load the min and max value accumulators
-		final Accumulator<double[]> min = sc.accumulator(minVals, new MinAccumulator());
-		final Accumulator<double[]> max = sc.accumulator(maxVals, new MaxAccumulator());
-
-		//For each tuple identify min and max by using the accumulators
-		rdd.foreach(new VoidFunction<Row>() {
-			
-			@Override
-			public void call(Row row) throws Exception {
-				double[] temp = new double[row.getNumericAttributes().length+1];
-				System.arraycopy(row.getNumericAttributes(), 0, temp, 0, temp.length-1);
-				temp[temp.length-1] = row.getOutcome();
-				min.add(temp);
-				max.add(temp);	
-			}
-		});
-
-		minVals = min.value();
-		maxVals = max.value();
-		//Compute the range and get the reciprocal. This is done as part of optimization as division is more costly than multiplication
-		double temp;
-		for(int i=0;i<rangesVals.length;i++)
-		{
-			temp = maxVals[i]-minVals[i];
-			if(temp == 0)
-				rangesVals[i] = 0;
-			else
-			rangesVals[i] = temp;
-		}
-		return rangesVals;
-	}
+	
 	
 	public static MinMax getMinMax(JavaRDD<Row> rdd)
 	{
@@ -292,86 +252,7 @@ public class Utility implements Serializable {
 
 		return new MinMax(minVals, maxVals);
 	}
-	
-	public static double[] getMax(JavaRDD<Row> rdd)
-	{
-		SparkContext sc = rdd.context();
-		Row firstRow = rdd.first();
-		int numOfNumericCols = firstRow.getNumericAttributes().length + 1;
-		
-		double[] maxVals = new double[numOfNumericCols];
 
-		final Accumulator<double[]> max = sc.accumulator(maxVals, new MaxAccumulator());
-
-		//For each tuple identify min and max by using the accumulators
-		rdd.foreach(new VoidFunction<Row>() {
-			
-			@Override
-			public void call(Row row) throws Exception {
-				double[] temp = new double[row.getNumericAttributes().length+1];
-				System.arraycopy(row.getNumericAttributes(), 0, temp, 0, temp.length-1);
-				temp[temp.length-1] = row.getOutcome();
-				max.add(temp);	
-			}
-		});
-
-		maxVals = max.value();
-
-		return maxVals;
-	}
-	
-	/**
-	 * Get the ranges of every attribute including the response variable which is the last column in the data set. 
-	 * It is also the last column in the result
-	 * @param rdd
-	 * @return
-	 */
-	public static double[] getRangesWithResponse(JavaRDD<Row> rdd)
-	{
-		SparkContext sc = rdd.context();
-		Row firstRow = rdd.first();
-		int numOfNumericCols = firstRow.getNumericAttributes().length;
-		
-		double[] minVals = new double[numOfNumericCols+1];
-		double[] maxVals = new double[numOfNumericCols+1];
-
-		
-		double[] rangesVals = new double[numOfNumericCols+1];
-		//Load the min and max value accumulators
-		final Accumulator<double[]> min = sc.accumulator(minVals, new MinAccumulator());
-		final Accumulator<double[]> max = sc.accumulator(maxVals, new MaxAccumulator());
-
-		//For each tuple identify min and max by using the accumulators
-		rdd.foreach(new VoidFunction<Row>() {
-			
-			@Override
-			public void call(Row row) throws Exception {
-				double[] attrs = row.getNumericAttributes();
-				double[] temp = new double[attrs.length+1];
-				for(int i =0;i<attrs.length;i++)
-					temp[i] = attrs[i];
-				temp[temp.length-1] = row.getOutcome();
-				min.add(temp);
-				max.add(temp);	
-			}
-		});
-
-		minVals = min.value();
-		maxVals = max.value();
-		//Compute the range and get the reciprocal. This is done as part of optimization as division is more costly than multiplication
-		double temp;
-		for(int i=0;i<rangesVals.length;i++)
-		{
-			temp = maxVals[i]-minVals[i];
-			if(temp == 0)
-				rangesVals[i] = 0;
-			else
-			rangesVals[i] = temp;
-		}
-		return rangesVals;
-	}
-	
-	
 	public static String computeUpperLowerApproxN(JavaSparkContext sc, final String filePath, int numOfPartitions, final String hadoopHome, final int numOfThreads, final String outputPath, final ClassVectorsGenerator cvGen, final RowsDescriptor rowFormat, final FuzzySimilarityFunction simFunction, final boolean includeBoth) throws IOException, InterruptedException
 	{
 		long startTime = System.currentTimeMillis()/1000;
@@ -536,203 +417,18 @@ public class Utility implements Serializable {
 		return outputFilePath+"/part-00000";
 	}
 	
-	private static void addNumericApproxToList(List<Tuple2<Integer, ApproxRow>> list, double[] la, double[] ua, int numOfClasses)
-	{
-		double[] lar = new double[numOfClasses];
-		double[] uar = new double[numOfClasses];
-		for(int i=0, rowId = 1;i<la.length;i+=numOfClasses, rowId++)
-		{
-			lar = new double[numOfClasses];
-			uar = new double[numOfClasses];
-			System.arraycopy(la, i, lar, 0, numOfClasses);
-			System.arraycopy(ua, i, uar, 0, numOfClasses);
-			list.add(new Tuple2<Integer, ApproxRow>(rowId, new ApproxRow(lar, uar)));
-		}
-	}
-	
-	
-	public static String computeUpperLowerApprox(JavaSparkContext sc, final String filePath, int numOfPartitions, final String hadoopHome, final int numOfThreads, final String outputPath, final ClassVectorsGenerator cvGen, final RowsDescriptor rowFormat, final FuzzySimilarityFunction simFunction, final boolean includeBoth) throws IOException, InterruptedException
-	{
-		long startTime = System.currentTimeMillis()/1000;
-        
-		JavaRDD<String> rawRDD = sc.textFile(filePath,numOfPartitions);
-		JavaPairRDD<Integer, Row> rdd = rawRDD.mapToPair(new PairFunction<String, Integer, Row>() {
 
-			/**
-			 * 
-			 */
-			private static final long serialVersionUID = 1L;
-
-			@Override
-			public Tuple2<Integer, Row> call(String line) throws Exception {
-				Row r = new Row(line,rowFormat);
-				return new Tuple2<Integer, Row>(r.getId(), r);
-			}
-		}).partitionBy(new RowPartitioner(numOfPartitions));
-		
-		JavaRDD<Row> rowsRDD = rdd.values();
-		final double[] rangesVals = Utility.getRanges(rowsRDD);
-		cvGen.init(rowsRDD);
-		final Broadcast<double[]> ranges = sc.broadcast(rangesVals);
-		final Broadcast<ClassVectorsGenerator> broadcastedCvGen = sc.broadcast(cvGen);
-		
-		JavaPairRDD<Integer, ApproxRow> partialApprox = rdd.mapPartitionsToPair(new PairFlatMapFunction<Iterator<Tuple2<Integer,Row>>, Integer, ApproxRow>() {
-
-			/**
-			 * 
-			 */
-			private static final long serialVersionUID = 1L;
-
-			@Override
-			public List<Tuple2<Integer, ApproxRow>> call(
-					Iterator<Tuple2<Integer, Row>> rowPairIter) throws Exception {
-				BufferedReader br = getReader(filePath, hadoopHome);
-				List<ApproxRow> tempRows = new ArrayList<ApproxRow>();
-
-				List<Tuple2<Integer, ApproxRow>> result = new ArrayList<Tuple2<Integer, ApproxRow>>();
-				ApproxRow newRow;
-				ClassVectorsGenerator cvGen = broadcastedCvGen.value();
-				double[] rangesVal = ranges.value();
-				while (rowPairIter.hasNext()) {
-					newRow = new ApproxRow(rowPairIter.next()._2(),cvGen,rangesVal, includeBoth);
-					tempRows.add(newRow);
-					
-				}
-				//System.out.println(tempRows.size());
-				//ApproxRow[] inMemoryRows = new ApproxRow[tempRows.size()];
-				//inMemoryRows = tempRows.toArray(inMemoryRows);
-				InMemoryRows inMemRows = new InMemoryRows(tempRows);
-				ApproxRow[] inMemoryRows = inMemRows.getInMemRows();
-				
-				String[] lines = readNextLinesFromFile(numOfThreads, br);
-				
-				ApproxRow row;
-				double implicator= 0;
-				double simVal = -1;
-				double[] classVectors = null;
-				double tnorm = 0;
-
-				double[] lowerApproxValues;
-				double[] upperApproxValues = null;
-				
-				ExecutorService executorService = Executors.newFixedThreadPool(numOfThreads);
-				while(lines!=null)
-				{
-					if(numOfThreads == 1)
-					{
-						
-						if(lines[0] == null)
-							break;
-						row = new ApproxRow(lines[0], rowFormat, cvGen, rangesVal,includeBoth);
-						
-						
-						for(ApproxRow inMemRow: inMemoryRows)
-						{
-							simVal = simFunction.getSimilarity(row, inMemRow);
-							classVectors = inMemRow.getClassVectors();
-							lowerApproxValues = row.getLowerApproxValues();
-							if(includeBoth)
-							upperApproxValues = row.getUpperApproxValues();
-
-							for(int i=0;i<classVectors.length;i++)
-							{
-								implicator = Math.max((1-simVal), classVectors[i]);
-								lowerApproxValues[i] = Math.min(implicator, lowerApproxValues[i]);
-								
-								if(includeBoth)
-								{
-									tnorm = Math.min(simVal, classVectors[i]);
-									upperApproxValues[i] = Math.max(tnorm, upperApproxValues[i]);
-								}
-							}
-							
-						}
-						result.add(new Tuple2<Integer, ApproxRow>(row.getId(), row));
-					}
-					else
-					{
-						FrsIteration frsIter = new FrsIteration();
-						frsIter.generateParameters(lines, rowFormat, cvGen, rangesVals, inMemRows, simFunction, includeBoth, false);
-						ListMerger m =  (ListMerger) Utility.parallelLoop(frsIter,executorService, 0, lines.length, numOfThreads);
-						for(Object o:m.getList())
-						result.add((Tuple2<Integer, ApproxRow>) o);
-							
-					}
-					
-					lines = readNextLinesFromFile(numOfThreads, br);
-				}
-				executorService.shutdown();
-				return result;
-			}
-		});
-		
-		JavaPairRDD<Integer, ApproxRow> multiApproxRDD = partialApprox.reduceByKey(new Function2<ApproxRow,ApproxRow,ApproxRow>() {
-			
-			/**
-			 * 
-			 */
-			private static final long serialVersionUID = 1L;
-
-			@Override
-			public ApproxRow call(ApproxRow arg0, ApproxRow arg1) throws Exception {
-				double[] la0 = arg0.getLowerApproxValues();
-				double[] la1 = arg1.getLowerApproxValues();
-				
-				double[] ua0 = arg0.getUpperApproxValues();
-				double[] ua1 = arg1.getUpperApproxValues();
-				
-				double[] la = new double[la0.length];
-				double[] ua = new double[la0.length];
-				
-				for(int i=0;i<la0.length;i++)
-				{
-					la[i] = Math.min(la0[i], la1[i]);
-					if(includeBoth)
-					ua[i] = Math.max(ua0[i], ua1[i]);
-				}
-				
-				return new ApproxRow(la, ua);
-			}
-		});
-		
-		JavaRDD<String> saveRDD = multiApproxRDD.map(new Function<Tuple2<Integer,ApproxRow>, String>() {
-
-			/**
-			 * 
-			 */
-			private static final long serialVersionUID = 1L;
-
-			@Override
-			public String call(Tuple2<Integer, ApproxRow> arg0) throws Exception {
-				double lowerApprox = 0, upperApprox = 0;
-				double[] la = arg0._2().getLowerApproxValues();
-				double[] ua = arg0._2().getUpperApproxValues();
-				
-				int rowId = arg0._1();
-				for(int i=0;i<la.length;i++)
-				{
-					lowerApprox = Math.max(la[i], lowerApprox);
-					if(includeBoth)
-					upperApprox = Math.max(ua[i], upperApprox);
-				}
-				String result = rowId+","+lowerApprox;
-				if(includeBoth)
-					result += ","+upperApprox;
-				return result;
-			}
-		});
-		
-		System.out.println(saveRDD.collect());
-
-		SimpleDateFormat formatter = new SimpleDateFormat("YYYY-MM-dd_hh-mm-ss");
-		String outputFilePath = outputPath+"/approx_"+formatter.format(new Date());
-		
-		saveRDD.coalesce(1, true).saveAsTextFile(outputFilePath);
-
-		return outputFilePath+"/part-00000";
-	}
-
-	public static String computeQualityVector(JavaSparkContext sc, final String filePath, int numOfPartitions, final String hadoopHome, final int numOfThreads, final String outputPath, final RowsDescriptor rowFormat, final FuzzySimilarityFunction simFunction, final boolean numericOnly) throws IOException, InterruptedException
+	    /**
+	     * Uses the POWA/OWA approach to computes the quality of every row in the data set located under filePath. When partition=1 then OWA is computed. Otherwise, OWA is approximated with POWA.
+	     * @param filePath filePath A path to a data set
+	     * @param rowFormat This object is used to parse each row in the data set file.
+	     * @param simFunction This is the similarity function applied when computing similarities between instances
+	     * @param numOfPartitions This controls the degree of approximated OWA using POWA. 1 means compute OWA and more than 1 means approximate OWA using POWA.
+	     * @return A list of Row objects where each Row object represents a row in the data set and each of these rows has an POWA quality value associated with it.
+	     * @throws IOException
+	     * @throws InterruptedException
+	     */	
+	public static String computePOWA(JavaSparkContext sc, final String filePath, int numOfPartitions, final String hadoopHome, final int numOfThreads, final String outputPath, final RowsDescriptor rowFormat, final FuzzySimilarityFunction simFunction, final boolean numericOnly) throws IOException, InterruptedException
 	{
 		long startTime = System.currentTimeMillis()/1000;
         
@@ -775,7 +471,7 @@ public class Utility implements Serializable {
 			@Override
 			public List<Tuple2<Integer, Double>> call(
 					Iterator<Tuple2<Integer, Row>> rowPairIter) throws Exception {
-				MyLogger logger = new MyLogger("/home/hasfoor/frs.log");
+				MyLogger logger = new MyLogger(FrsKnn.logPath);
 				long completed = 0;
 				
 				BufferedReader br = getReader(filePath, hadoopHome);
@@ -783,7 +479,6 @@ public class Utility implements Serializable {
 
 				List<Tuple2<Integer, Double>> result = new ArrayList<Tuple2<Integer, Double>>();
 				QualityRow newRow;
-				//ClassVectorsGenerator cvGen = broadcastedCvGen.value();
 				MinMax minMaxVals = minMax.value();
 				while (rowPairIter.hasNext()) {
 					newRow = new QualityRow(rowPairIter.next()._2(),minMaxVals);
@@ -799,15 +494,11 @@ public class Utility implements Serializable {
 				QualityRow row;
 				double implicator= 0;
 				double simVal = -1;
-				double[] classVectors = null;
 				double rd,d1,d2;
 				double quality = 1;
 				
-				int p = tempRows.size();
-				//Double[] qualities = new Double[p];
 				List<Double> qualities = new ArrayList<Double>();
-				Double[] w;//= generateWeights(p);
-				//int index = 0;
+				Double[] w;
 				ExecutorService executorService = Executors.newFixedThreadPool(numOfThreads);
 				while(lines!=null)
 				{
@@ -818,8 +509,6 @@ public class Utility implements Serializable {
 							break;
 						row = new QualityRow(lines[0], rowFormat, minMaxVals);
 						d1 = row.getNormalizedOutcome();
-						//quality = 1;
-						//index = 0;
 						for(QualityRow inMemRow: inMemoryRows)
 						{
 							if(inMemRow.getId()!= row.getId())
@@ -836,9 +525,6 @@ public class Utility implements Serializable {
 									//qualities[index] = implicator;
 								}
 							}
-							/*else
-								qualities[index] = 1.0;*/
-							//index++;
 							
 						}
 						w = generateWeights(qualities.size());
@@ -856,7 +542,6 @@ public class Utility implements Serializable {
 							
 					}
 					completed+=lines.length;
-					//System.out.println("LowerApprox: " + completed * 100.0/rowCount+"% completed");
 					logger.log("LowerApprox: " + completed * 100.0/rowCount+"% completed");
 					lines = readNextLinesFromFile(numOfThreads, br);
 				}
@@ -884,8 +569,6 @@ public class Utility implements Serializable {
 			}
 		});
 
-		System.out.println("");
-
 		JavaRDD<String> saveRDD = multiApproxRDD.map(new Function<Tuple2<Integer,Double>, String>() {
 
 			@Override
@@ -895,7 +578,6 @@ public class Utility implements Serializable {
 			}
 		});
 
-		//System.out.println(saveRDD.collect());
 		SimpleDateFormat formatter = new SimpleDateFormat("YYYY-MM-dd_hh-mm-ss");
 		String outputFilePath = outputPath+"/quality_"+formatter.format(new Date());
 		
@@ -905,30 +587,6 @@ public class Utility implements Serializable {
 		return outputFilePath+"/part-00000";
 	}
 	
-	/*public static double owa(double[] p, double[] w)
-	{
-		Arrays.sort(p);
-		double result = 0;
-		for(int i=0;i<p.length;i++)
-			result+= p[i] * w[i];
-		return result;
-	}
-	
-	public static double[] generateWeights(int numOfRows)
-	{
-		double[] w = new double[numOfRows];
-		double d = 0;
-		for(int i=1;i<=numOfRows;i++)
-		{
-			d+=(1/i);
-		}
-		
-		for(int i=0, j=numOfRows;i<numOfRows;i++,j--)
-		{
-			w[i] = 1/(d*j);
-		}
-		return w;
-	}*/
 	
 	public static double owa(Double[] v, Double[] w) {
 		Arrays.sort(v, Collections.reverseOrder());
@@ -961,7 +619,17 @@ public class Utility implements Serializable {
 		return w;
 	}
 	
-	public static String computeLowerApprox(JavaSparkContext sc, final String filePath, int numOfPartitions, final String hadoopHome, final int numOfThreads, final String outputPath, final ClassVectorsGenerator cvGen, final RowsDescriptor rowFormat, final FuzzySimilarityFunction simFunction, final boolean numericOnly) throws IOException, InterruptedException
+	/**
+	     * Uses the HML approach to computes the quality of every row in the data set located under filePath 
+	     * @param filePath A path to a data set
+	     * @param cvGen This object is used to generate values for high mid and low the class vectors.
+	     * @param rowFormat This object is used to parse each row in the data set file.
+	     * @param simFunction This is the similarity function applied when computing similarities between instances
+	     * @return A list of Row objects where each Row object represents a row in the data set and each of these rows has an HML quality value associated with it.
+	     * @throws IOException
+	     * @throws InterruptedException
+	     */
+	public static String computeHML(JavaSparkContext sc, final String filePath, int numOfPartitions, final String hadoopHome, final int numOfThreads, final String outputPath, final ClassVectorsGenerator cvGen, final RowsDescriptor rowFormat, final FuzzySimilarityFunction simFunction, final boolean numericOnly) throws IOException, InterruptedException
 	{
 		long startTime = System.currentTimeMillis()/1000;
         
@@ -1000,7 +668,7 @@ public class Utility implements Serializable {
 			@Override
 			public List<Tuple2<Integer, double[]>> call(
 					Iterator<Tuple2<Integer, Row>> rowPairIter) throws Exception {
-				MyLogger logger = new MyLogger("/home/hasfoor/frs.log");
+				MyLogger logger = new MyLogger(FrsKnn.logPath);
 				long completed = 0;
 				
 				BufferedReader br = getReader(filePath, hadoopHome);
@@ -1015,19 +683,7 @@ public class Utility implements Serializable {
 					tempRows.add(newRow);
 					
 				}
-				
-				//remove me
-				/*for(ApproxRow r: tempRows)
-					System.out.println(r.id+","+Arrays.toString(r.getClassVectors()));*/
-				
-				
-				/*String classes="";
-				for(ApproxRow rx:tempRows)
-					classes+=Arrays.toString(rx.getClassVectors())+"\n";
 
-				System.out.println(classes);*/
-				//ApproxRow[] inMemoryRows = new ApproxRow[tempRows.size()];
-				//inMemoryRows = tempRows.toArray(inMemoryRows);
 				InMemoryRows inMemRows = new InMemoryRows(tempRows);
 				ApproxRow[] inMemoryRows = inMemRows.getInMemRows();
 				
@@ -1074,8 +730,6 @@ public class Utility implements Serializable {
 							
 					}
 					completed+=lines.length;
-					//System.out.println("LowerApprox: " + completed * 100.0/rowCount+"% completed");
-					
 					logger.log("LowerApprox: " + completed * 100.0/rowCount+"% completed");
 					lines = readNextLinesFromFile(numOfThreads, br);
 				}
@@ -1129,7 +783,6 @@ public class Utility implements Serializable {
 			}
 		});
 
-		//System.out.println(saveRDD.collect());
 		SimpleDateFormat formatter = new SimpleDateFormat("YYYY-MM-dd_hh-mm-ss");
 		String outputFilePath = outputPath+"/approx_"+formatter.format(new Date());
 		
@@ -1209,6 +862,17 @@ public class Utility implements Serializable {
 		return prop;
 	}
 	
+	    /**
+	     * Uses the prototype set in protoTypePath to predict the outcome of each instance in the test set under testDataPath.
+	     * @param protoTypePath
+	     * @param testDataPath
+	     * @param numberOfNN
+	     * @param predictor This object defines the function to apply on the kNN (such as weighted avg) to predict the outcome.
+	     * @param rowFormat Object used to parse a row in a file
+	     * @param dFunction Distance function
+	     * @return output message listing test rows' IDs, their actual outcomes and their predicted outcomes
+	     * @throws IOException
+	     */
 	public static String predict(JavaSparkContext sc, final String protoTypePath, final String testDataPath, String outputPath, final int numberOfNN, int numOfPartitions, final String hadoopHome, final int numOfThreads, final KnnPredictor predictor, final RowsDescriptor rowFormat, final DistanceFunction dFunction)
 	{
 		JavaRDD<String> rawRDD = sc.textFile(protoTypePath, numOfPartitions);
@@ -1217,7 +881,6 @@ public class Utility implements Serializable {
 
 			@Override
 			public Tuple2<Integer, KnnRow> call(String line) throws Exception {
-				//Row r = new Row(line,rowFormat);
 				KnnRow r = new KnnRow(line, rowFormat, numOfThreads, predictor);
 				return new Tuple2<Integer, KnnRow>(r.getId(), r);
 			}
@@ -1237,10 +900,7 @@ public class Utility implements Serializable {
 				List<Tuple2<Integer,KnnRow>> nnList = new ArrayList<Tuple2<Integer,KnnRow>>();
 				//KnnRow r;
 				while (arg0.hasNext()) {
-					//r = new Kn
-					//r = new KnnRow(arg0.next(), rowFormat, numOfThreads, predictor);
 					tempRows.add(arg0.next());
-					//nnList.add(new Tuple2<Integer, NearestNeighbor>(r.getId(), _2) ArrayList<NearestNeighbor>());
 				}
 				KnnRow[] inMemoryRows = new KnnRow[tempRows.size()];
 				inMemoryRows = tempRows.toArray(inMemoryRows);
@@ -1250,7 +910,6 @@ public class Utility implements Serializable {
 				List<NearestNeighbor> resultNNList, tempList;
 				
 				ExecutorService executorService = Executors.newFixedThreadPool(numOfThreads);
-				//InMemoryKnnRows inMemKnnRows = new InMemoryKnnRows(inMemoryRows);
 				while(lines!=null)
 				{
 					int numOfLines = lines.length;
@@ -1278,13 +937,6 @@ public class Utility implements Serializable {
 					}
 					else if(numOfLines<numOfThreads)
 					{
-						//here revisit
-						/*KnnIteration knnIter = new KnnIteration();
-						knnIter.init(0, lines.length);
-						knnIter.generateParameters(lines, rowFormat, inMemoryRows, dFunction, predictor, numberOfNN);
-						List<Tuple2<Integer, KnnRow>> iterationResultList = ((KnnMergableList) Utility.parallelLoop(knnIter,executorService, 0, lines.length, numOfThreads)).getList();
-						nnList.addAll(iterationResultList);*/
-						
 						KnnOneRowIteration knnIter = new KnnOneRowIteration();
 						List<NearestNeighbor> iterationResultList;
 						for(int i=0;i<numOfLines;i++)
@@ -1347,16 +999,7 @@ public class Utility implements Serializable {
 
 		SimpleDateFormat formatter = new SimpleDateFormat("YYYY-MM-dd_hh-mm-ss");
 		String outputFilePath = outputPath+"/prediction_"+formatter.format(new Date());
-		
-		/*reducedRdd.mapValues(new Function<KnnRow, PredictedValue>() {
 
-			@Override
-			public PredictedValue call(KnnRow row) throws Exception {
-				// TODO Auto-generated method stub
-				return new PredictedValue(row);
-			}
-		}).coalesce(1,true).saveAsTextFile(outputFilePath);*/
-		
 		reducedRdd.mapValues(new Function<KnnRow, String>() {
 
 			@Override
@@ -1370,100 +1013,7 @@ public class Utility implements Serializable {
 		return outputFilePath+"/part-00000";
 	}
 	
-	public static String predict2(JavaSparkContext sc, final String protoTypePath, final String testDataPath, String outputPath, final int numberOfNN, int numOfPartitions, final String hadoopHome, final int numOfThreads, final KnnPredictor predictor, final RowsDescriptor rowFormat, final DistanceFunction dFunction)
-	{
-		JavaRDD<String> rawRDD = sc.textFile(protoTypePath, numOfPartitions);
-		JavaPairRDD<Integer, KnnRow> knnRDD = rawRDD.mapPartitionsToPair(new PairFlatMapFunction<Iterator<String>,Integer,KnnRow>() {
 
-			@Override
-			public Iterable<Tuple2<Integer, KnnRow>> call(
-					Iterator<String> arg0) throws Exception {
-				
-				BufferedReader br = Utility.getReader(testDataPath, hadoopHome);
-				List<KnnRow> tempRows = new ArrayList<KnnRow>();
-				String[] attrs = null;
-				List<Tuple2<Integer,KnnRow>> nnList = new ArrayList<Tuple2<Integer,KnnRow>>();
-				KnnRow r;
-				while (arg0.hasNext()) {
-					r = new KnnRow(arg0.next(), rowFormat, numOfThreads, predictor);
-					tempRows.add(r);
-					//nnList.add(new Tuple2<Integer, NearestNeighbor>(r.getId(), _2) ArrayList<NearestNeighbor>());
-				}
-				KnnRow[] inMemoryRows = new KnnRow[tempRows.size()];
-				inMemoryRows = tempRows.toArray(inMemoryRows);
-				
-				String[] lines = Utility.readNextLinesFromFile(numOfThreads, br);
-				KnnRow testRow, protoTypeRow;
-				List<NearestNeighbor> resultNNList, tempList;
-				ExecutorService executorService = Executors.newFixedThreadPool(numOfThreads);
-
-				while(lines!=null)
-				{
-					/*for(String line:lines)
-					{
-						if(line == null)
-							break;
-						testRow = new KnnRow(line, rowFormat, numOfThreads, predictor);
-						testRow.setKnnList(getKNN(numberOfNN, testRow, inMemoryRows, numOfThreads));
-						nnList.add(new Tuple2<Integer, KnnRow>(testRow.getId(),testRow));
-					
-						
-					}*/
-					if(numOfThreads == 1)
-					{
-						for(String line:lines)
-						{
-							if(line == null)
-								break;
-							testRow = new KnnRow(line, rowFormat, numOfThreads, predictor);
-							setKnn(numberOfNN, testRow, inMemoryRows,dFunction, true);
-							nnList.add(new Tuple2<Integer, KnnRow>(testRow.getId(),testRow));
-						}
-					}
-					else
-					{
-						KnnIteration knnIter = new KnnIteration();
-						knnIter.init(0, lines.length);
-						knnIter.generateParameters(lines, rowFormat, inMemoryRows, dFunction, predictor, numberOfNN, true);
-						nnList = ((KnnMergableList) Utility.parallelLoop(knnIter,executorService, 0, lines.length, numOfThreads)).getList();
-					}
-					lines = Utility.readNextLinesFromFile(numOfThreads, br);
-				}
-				return nnList;
-			}
-		});
-		
-		JavaPairRDD<Integer, KnnRow> reducedRdd = knnRDD.reduceByKey(new Function2<KnnRow, KnnRow, KnnRow>() {
-			
-			@Override
-			public KnnRow call(KnnRow arg0, KnnRow arg1) throws Exception {
-				List<NearestNeighbor> nn = arg0.getKnnList();
-				nn.addAll(arg1.getKnnList());
-				Collections.sort(nn);
-				List<NearestNeighbor> result = new ArrayList<NearestNeighbor>(numberOfNN);
-				for(int i=0;i<numberOfNN && i<nn.size();i++)
-					result.add(nn.get(i));
-				arg0.setKnnList(result);
-				return arg0;
-			}
-		});
-		
-		SimpleDateFormat formatter = new SimpleDateFormat("YYYY-MM-dd_hh-mm-ss");
-		String outputFilePath = outputPath+"/prediction_"+formatter.format(new Date());
-		
-		reducedRdd.mapValues(new Function<KnnRow, PredictedValue>() {
-
-			@Override
-			public PredictedValue call(KnnRow row) throws Exception {
-				// TODO Auto-generated method stub
-				return new PredictedValue(row);
-			}
-		}).coalesce(1,true).saveAsTextFile(outputFilePath);
-		
-		return outputFilePath+"/part-00000";
-		
-	}
-	
 	public static JavaRDD<KnnRow> applyInstanceSelection(JavaRDD<KnnRow> rdd, final double quality)
 	{
 		return rdd.filter(new Function<KnnRow, Boolean>() {
@@ -1494,7 +1044,7 @@ public class Utility implements Serializable {
 				return arg0.getId();
 			}
 		}).partitionBy(new RowPartitioner(numOfPartitions)).sortByKey();
-		//final long rowCount = newRDD.count();
+
 		JavaPairRDD<Integer, KnnRow> knnRDD = newRDD.mapPartitionsToPair(new PairFlatMapFunction<Iterator<Tuple2<Integer,KnnRow>>, Integer,KnnRow>() {
 
 			/**
@@ -1504,7 +1054,7 @@ public class Utility implements Serializable {
 
 			public Iterable<Tuple2<Integer, KnnRow>> call(
 					Iterator<Tuple2<Integer,KnnRow>> arg0) throws Exception {
-				MyLogger logger = new MyLogger("/home/hasfoor/frs.log");
+				MyLogger logger = new MyLogger(FrsKnn.logPath);
 				long completed = 0;
 				BufferedReader br = Utility.getReader(trainingSetPath, hadoopHome);
 				List<KnnRow> tempRows = new ArrayList<KnnRow>();
@@ -1514,7 +1064,7 @@ public class Utility implements Serializable {
 				while (arg0.hasNext()) {
 					r = arg0.next()._2();
 					tempRows.add(r);
-					//nnList.add(new Tuple2<Integer, NearestNeighbor>(r.getId(), _2) ArrayList<NearestNeighbor>());
+
 				}
 				KnnRow[] inMemoryRows = new KnnRow[tempRows.size()];
 				inMemoryRows = tempRows.toArray(inMemoryRows);
@@ -1556,30 +1106,6 @@ public class Utility implements Serializable {
 			}
 		});
 		
-		/*List<Tuple2<Integer, KnnRow>> i = knnRDD.collect();
-		for(Tuple2<Integer, KnnRow> t:i)
-		System.out.println(t._1()+":"+t._2().getKnnList());
-		System.out.println("");*/
-		/*
-		JavaPairRDD<Integer, KnnRow> reducedRdd = knnRDD.reduceByKey(new Function2<KnnRow, KnnRow, KnnRow>() {
-
-
-			@Override
-			public KnnRow call(KnnRow arg0, KnnRow arg1) throws Exception 
-			{
-				List<NearestNeighbor> nn = arg0.getKnnList();
-				nn.addAll(arg1.getKnnList());
-				//Collections.sort(nn);
-				List<NearestNeighbor> result = new ArrayList<NearestNeighbor>(numberOfNN);
-				for(int i=0;i<numberOfNN && i<nn.size();i++)
-					result.add(nn.get(i));
-				arg0.setKnnList(result);
-				int size = nn.size();
-				KnnRow row = new KnnRow(arg0,predictor);
-				row.setKnnList(nn);
-				return row;
-			}
-		});*/
 		
 		JavaPairRDD<Integer, KnnRow> reducedRdd = knnRDD.groupByKey().mapValues(new Function<Iterable<KnnRow>, KnnRow>() {
 
@@ -1611,50 +1137,6 @@ public class Utility implements Serializable {
 		});
 		
 
-		/*reducedRdd.foreach(new VoidFunction<Tuple2<Integer,KnnRow>>() {
-			
-			@Override
-			public void call(Tuple2<Integer, KnnRow> arg0) throws Exception {
-				// TODO Auto-generated method stub
-				KnnRow row = arg0._2();
-				List<NearestNeighbor> nn = row.getKnnList();
-				int size = nn.size();
-				Collections.sort(nn);
-				List<NearestNeighbor> result = new ArrayList<NearestNeighbor>(numberOfNN);
-				for(int i=0;i<numberOfNN && i<nn.size();i++)
-					result.add(nn.get(i));
-				int size2 = result.size();
-				row.setKnnList(result);
-			}
-		});*/
-		/*Double sum = reducedRdd.map(new Function<Tuple2<Integer,KnnRow>, Double>() {
-
-			@Override
-			public Double call(Tuple2<Integer, KnnRow> arg0) throws Exception {
-				double sum = 0;
-				for(NearestNeighbor nn:arg0._2.getKnnList())
-					sum+= Double.parseDouble(nn.getLabel());
-				return sum;
-			}
-		}).reduce(new Function2<Double, Double, Double>() {
-			
-
-			private static final long serialVersionUID = 1L;
-
-			@Override
-			public Double call(Double arg0, Double arg1) throws Exception {
-				return arg0+arg1;
-			}
-		});
-		
-		System.out.println(sum);
-		reducedRdd = reducedRdd.sortByKey();
-		for(Tuple2<Integer, KnnRow> i: reducedRdd.collect())
-		{
-			//Collections.sort(i._2.getKnnList());
-			System.out.println(i._1+", "+i._2.getKnnString());
-		}*/
-		//reducedRdd.sortByKey().coalesce(1, true).saveAsTextFile("hdfs://r4srv-hdnm.rainier.com:54320/out/knnfile");
 		JavaPairRDD<Integer, PredictedValue> seRDD = reducedRdd.mapToPair(new PairFunction<Tuple2<Integer,KnnRow>, Integer, PredictedValue>() {
 
 			/**
@@ -1671,27 +1153,6 @@ public class Utility implements Serializable {
 		});
 		
 
-		/*JavaPairRDD<Integer, ErrorAccumulation> errorRDD = seRDD.mapValues(new Function<PredictedValue, ErrorAccumulation>() {
-
-			@Override
-			public ErrorAccumulation call(PredictedValue arg0) throws Exception {
-				// TODO Auto-generated method stub
-				return new ErrorAccumulation(arg0.getSquaredError(), 1);
-			}
-		});
-		
-
-		
-		errorRDD = errorRDD.reduceByKey(new Function2<ErrorAccumulation, ErrorAccumulation, ErrorAccumulation>() {
-			
-			@Override
-			public ErrorAccumulation call(ErrorAccumulation arg0, ErrorAccumulation arg1)
-					throws Exception {
-				// TODO Auto-generated method stub
-				return new ErrorAccumulation(arg0.getError() + arg1.getError(), arg0.getNumOfElements() + arg1.getNumOfElements());
-			}
-		});*/
-		
 		JavaPairRDD<Integer, ErrorAccumulation> errorRDD = seRDD.groupByKey().mapValues(new Function<Iterable<PredictedValue>, ErrorAccumulation>() {
 
 			/**
@@ -1729,47 +1190,6 @@ public class Utility implements Serializable {
 		rmse = rmse/10;
 		return rmse;
 		
-		/*List<Integer> count = seRDD.mapValues(new Function<PredictedValue, Integer>() {
-
-			@Override
-			public Integer call(PredictedValue arg0) throws Exception {
-				// TODO Auto-generated method stub
-				return 1;
-			}
-		}).reduceByKey(new Function2<Integer, Integer, Integer>() {
-			
-			@Override
-			public Integer call(Integer arg0, Integer arg1) throws Exception {
-				// TODO Auto-generated method stub
-				return arg0+arg1;
-			}
-		}).sortByKey().values().collect();
-		
-		List<Double> error = seRDD.mapValues(new Function<PredictedValue, Double>() {
-
-			@Override
-			public Double call(PredictedValue arg0)
-					throws Exception {
-				// TODO Auto-generated method stub
-				return arg0.getSquaredError();
-			}
-		}).reduceByKey(new Function2<Double, Double, Double>() {
-			
-			@Override
-			public Double call(Double arg0, Double arg1) throws Exception {
-				// TODO Auto-generated method stub
-				return arg0+arg1;
-			}
-		}).sortByKey().values().collect();
-		
-		double rmse = 0;
-		for(int i=0;i<10;i++)
-		{
-			rmse+= Math.sqrt(error.get(i)/count.get(i));
-		}
-		rmse = rmse/10;
-		return rmse;*/
-		
 	}
 	
 	public static void setKnn(int k, KnnRow testRow,KnnRow[] trainingSet, DistanceFunction dfunction, boolean isFoldNotApplicable) 
@@ -1797,7 +1217,7 @@ public class Utility implements Serializable {
 		NearestNeighbor neighbour;
 		double distance;
 		KnnRow trainingRow;
-		//for(KnnRow trainingRow:trainingSet)
+
 		for(int i=start;i<end && i<trainingSet.length;i++)
 		{
 			trainingRow = trainingSet[i];
@@ -1811,82 +1231,5 @@ public class Utility implements Serializable {
 		return Lists.newArrayList(knnList.iterator());
 	}
 	
-	public static void setKnnN(int k, KnnRow testRow, InMemoryKnnRows trainingSet, boolean isFoldNotApplicable) 
-	{
-		MinMaxPriorityQueue<NearestNeighbor> knnList = MinMaxPriorityQueue.maximumSize(k).create();
-		NearestNeighbor neighbour;
-		double distance;
-		//InMemoryKnnRows inMemRows = new InMemoryKnnRows(trainingSet);
-		int numOfRows = trainingSet.getNumOfRows();
-		int[] rowIds = trainingSet.getRowIds();
-		int[] foldNums = trainingSet.getFoldNo();
-		String[] labels = trainingSet.getLabels();
-		
-		int attrStartInd=0;
-		double[] testAttrs = testRow.getNumericAttributes();
-		double[] trainingAttrs = trainingSet.getNumericAttrs();
-		double testFoldNo = testRow.getFoldNo();
-		int numOfAttrs = testAttrs.length;
-		double tempNum=0;
-		KnnRow trainingRow;
-		KnnRow[] trainingRows = trainingSet.getTrainingSet();
-		if(isFoldNotApplicable)
-		{
-			for(int ri = 0; ri< numOfRows; ri++)
-			{
-				trainingRow = trainingRows[ri];
-				attrStartInd = ri*numOfAttrs;
-				distance = 0;
-				for(int ai=0;ai<numOfAttrs; ai++)
-				{
-					tempNum = trainingAttrs[attrStartInd+ai];// - row1Attrs[r1];
-					tempNum -= testAttrs[ai];
-					if(tempNum<0)
-						tempNum = -tempNum;
-					distance += tempNum;
-				}
-
-				neighbour = new NearestNeighbor();
-				/*neighbour.setId(rowIds[ri]);
-				neighbour.setDistance(distance);
-				neighbour.setLabel(labels[ri]);
-				knnList.add(neighbour);*/
-				neighbour.setId(trainingRow.getId());
-				neighbour.setDistance(distance);
-				neighbour.setLabel(trainingRow.getLabel());
-				testRow.addNearestNeighbor(neighbour);
-			}
-		}
-		else
-		{
-			for(int ri = 0; ri< numOfRows; ri++)
-			{
-				trainingRow = trainingRows[ri];
-				if(testFoldNo!=foldNums[ri])
-				{
-					attrStartInd = ri*numOfAttrs;
-					distance = 0;
-					for(int ai=0;ai<numOfAttrs; ai++)
-					{
-						tempNum = trainingAttrs[attrStartInd+ai];// - row1Attrs[r1];
-						tempNum -= testAttrs[ai];
-						if(tempNum<0)
-							tempNum = -tempNum;
-						distance += tempNum;
-					}
 	
-					neighbour = new NearestNeighbor();
-					/*neighbour.setId(rowIds[ri]);
-					neighbour.setDistance(distance);
-					neighbour.setLabel(labels[ri]);
-					knnList.add(neighbour);*/
-					neighbour.setId(trainingRow.getId());
-					neighbour.setDistance(distance);
-					neighbour.setLabel(trainingRow.getLabel());
-					testRow.addNearestNeighbor(neighbour);
-				}
-			}
-		}
-		testRow.setKnnList(knnList);
-	}
 }
